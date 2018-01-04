@@ -3,7 +3,6 @@ package memberlist
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -206,10 +205,11 @@ type Config struct {
 	LogOutput io.Writer
 
 	// Logger is a custom logger which you provide. If Logger is set, it will use
-	// this for the internal logger. If Logger is not set, it will fall back to the
+	// this for the internal logger. If Logger implements the LevelLogger interface,
+	// that interface will be used. If Logger is not set, it will fall back to the
 	// behavior for using LogOutput. You cannot specify both LogOutput and Logger
 	// at the same time.
-	Logger *log.Logger
+	Logger Logger
 
 	// Size of Memberlist's internal channel which handles UDP messages. The
 	// size of this determines the size of the queue which Memberlist will keep

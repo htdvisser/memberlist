@@ -76,7 +76,7 @@ type Memberlist struct {
 
 	broadcasts *TransmitLimitedQueue
 
-	logger *log.Logger
+	logger LevelLogger
 }
 
 // BuildVsnArray creates the array of Vsn
@@ -129,6 +129,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 	if logger == nil {
 		logger = log.New(logDest, "", log.LstdFlags)
 	}
+	levelLogger := levelLogger(logger)
 
 	// Set up a network transport by default if a custom one wasn't given
 	// by the config.
@@ -137,7 +138,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 		nc := &NetTransportConfig{
 			BindAddrs: []string{conf.BindAddr},
 			BindPort:  conf.BindPort,
-			Logger:    logger,
+			Logger:    levelLogger,
 		}
 
 		// See comment below for details about the retry in here.
@@ -149,7 +150,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 					return nt, nil
 				}
 				if strings.Contains(err.Error(), "address already in use") {
-					logger.Printf("[DEBUG] memberlist: Got bind error: %v", err)
+					levelLogger.Debugf("Got bind error: %v", err)
 					continue
 				}
 			}
@@ -176,14 +177,14 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 			port := nt.GetAutoBindPort()
 			conf.BindPort = port
 			conf.AdvertisePort = port
-			logger.Printf("[DEBUG] memberlist: Using dynamic bind port %d", port)
+			levelLogger.Debugf("Using dynamic bind port %d", port)
 		}
 		transport = nt
 	}
 
 	nodeAwareTransport, ok := transport.(NodeAwareTransport)
 	if !ok {
-		logger.Printf("[DEBUG] memberlist: configured Transport is not a NodeAwareTransport and some features may not work as desired")
+		levelLogger.Debugf("configured Transport is not a NodeAwareTransport and some features may not work as desired")
 		nodeAwareTransport = &shimNodeAwareTransport{transport}
 	}
 
@@ -200,7 +201,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 		awareness:            newAwareness(conf.AwarenessMaxMultiplier),
 		ackHandlers:          make(map[uint32]*ackHandler),
 		broadcasts:           &TransmitLimitedQueue{RetransmitMult: conf.RetransmitMult},
-		logger:               logger,
+		logger:               levelLogger,
 	}
 	m.broadcasts.NumNodes = func() int {
 		return m.estNumNodes()
@@ -254,7 +255,7 @@ func (m *Memberlist) Join(existing []string) (int, error) {
 		if err != nil {
 			err = fmt.Errorf("Failed to resolve %s: %v", exist, err)
 			errs = multierror.Append(errs, err)
-			m.logger.Printf("[WARN] memberlist: %v", err)
+			m.logger.Warnf("%v", err)
 			continue
 		}
 
@@ -264,7 +265,7 @@ func (m *Memberlist) Join(existing []string) (int, error) {
 			if err := m.pushPullNode(a, true); err != nil {
 				err = fmt.Errorf("Failed to join %s: %v", addr.ip, err)
 				errs = multierror.Append(errs, err)
-				m.logger.Printf("[DEBUG] memberlist: %v", err)
+				m.logger.Debugf("%v", err)
 				continue
 			}
 			numSuccess++
@@ -336,7 +337,7 @@ func (m *Memberlist) tcpLookupIP(host string, defaultPort uint16, nodeName strin
 			case (*dns.AAAA):
 				ips = append(ips, ipPort{ip: rr.AAAA, port: defaultPort, nodeName: nodeName})
 			case (*dns.CNAME):
-				m.logger.Printf("[DEBUG] memberlist: Ignoring CNAME RR in TCP-first answer for '%s'", host)
+				m.logger.Debugf("Ignoring CNAME RR in TCP-first answer for '%s'", host)
 			}
 		}
 		return ips, nil
@@ -384,7 +385,7 @@ func (m *Memberlist) resolveAddr(hostStr string) ([]ipPort, error) {
 	// way to query DNS, and we have a fallback below.
 	ips, err := m.tcpLookupIP(host, port, nodeName)
 	if err != nil {
-		m.logger.Printf("[DEBUG] memberlist: TCP-first lookup failed for '%s', falling back to UDP: %s", hostStr, err)
+		m.logger.Debugf("TCP-first lookup failed for '%s', falling back to UDP: %s", hostStr, err)
 	}
 	if len(ips) > 0 {
 		return ips, nil
@@ -427,7 +428,7 @@ func (m *Memberlist) setAlive() error {
 	}
 	_, publicIfs, err := sockaddr.IfByRFC("6890", ifAddrs)
 	if len(publicIfs) > 0 && !m.config.EncryptionEnabled() {
-		m.logger.Printf("[WARN] memberlist: Binding to public address without encryption!")
+		m.logger.Warnf("Binding to public address without encryption!")
 	}
 
 	// Set any metadata from the delegate.
@@ -639,7 +640,7 @@ func (m *Memberlist) Leave(timeout time.Duration) error {
 		state, ok := m.nodeMap[m.config.Name]
 		m.nodeLock.Unlock()
 		if !ok {
-			m.logger.Printf("[WARN] memberlist: Leave but we're not in the node map.")
+			m.logger.Warnf("Leave but we're not in the node map.")
 			return nil
 		}
 
@@ -718,7 +719,7 @@ func (m *Memberlist) Shutdown() error {
 	// completely torn down. If we kill the memberlist-side handlers
 	// those I/O handlers might get stuck.
 	if err := m.transport.Shutdown(); err != nil {
-		m.logger.Printf("[ERR] Failed to shutdown transport: %v", err)
+		m.logger.Errorf("Failed to shutdown transport: %v", err)
 	}
 
 	// Now tear down everything else.

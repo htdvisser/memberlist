@@ -782,7 +782,7 @@ func TestIngestPacket_CRC(t *testing.T) {
 
 	logs := &bytes.Buffer{}
 	logger := log.New(logs, "", 0)
-	m.logger = logger
+	m.logger = levelLogger(logger)
 	m.ingestPacket(in, udp.LocalAddr(), time.Now())
 
 	if !strings.Contains(logs.String(), "invalid checksum") {
@@ -803,7 +803,7 @@ func TestIngestPacket_ExportedFunc_EmptyMessage(t *testing.T) {
 
 	logs := &bytes.Buffer{}
 	logger := log.New(logs, "", 0)
-	m.logger = logger
+	m.logger = levelLogger(logger)
 
 	err := m.transport.IngestPacket(emptyConn, udp.LocalAddr(), time.Now(), true)
 	require.Error(t, err)
